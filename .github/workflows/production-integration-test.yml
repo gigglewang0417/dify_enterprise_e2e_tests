@@ -1,0 +1,218 @@
+name: Production Integration Test
+
+on:
+  schedule:
+    - cron: "0 1 * * *" # 每天 UTC 01:00，即北京时间 09:00
+  workflow_dispatch:
+    inputs:
+      pytest_target:
+        description: "Pytest target path"
+        required: false
+        default: "testcases"
+        type: string
+      pytest_markers:
+        description: "Optional pytest markers, e.g. integration and not slow"
+        required: false
+        default: ""
+        type: string
+      workers:
+        description: "xdist workers, e.g. auto / 2"
+        required: false
+        default: "1"
+        type: string
+
+concurrency:
+  group: production-integration-test-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  automation-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      ENV: ci
+      PYTHONUNBUFFERED: "1"
+      PY_COLORS: "1"
+
+      # 运行环境
+      BASE_URL: ${{ secrets.BASE_URL }}
+      CONSOLE_URL: ${{ secrets.CONSOLE_URL }}
+      ADMIN_API_BASE_URL: ${{ secrets.ADMIN_API_BASE_URL }}
+
+      # 账号密码
+      ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      CONSOLE_EMAIL: ${{ secrets.CONSOLE_EMAIL }}
+      CONSOLE_PASSWORD: ${{ secrets.CONSOLE_PASSWORD }}
+      SAML_SSO_EMAIL: ${{ secrets.SAML_SSO_EMAIL }}
+
+      # 密码策略相关
+      PWD_EMAIL: ${{ secrets.PWD_EMAIL }}
+      PWD_PASSWORD: ${{ secrets.PWD_PASSWORD }}
+      NEW_PASSWORD_AFTER_POLICY: ${{ secrets.NEW_PASSWORD_AFTER_POLICY }}
+
+      # 插件 / 凭据 / 模型相关
+      PLUGIN_KEYWORD: ${{ secrets.PLUGIN_KEYWORD }}
+      PLUGIN_ID: ${{ secrets.PLUGIN_ID }}
+      PLUGIN_UNIQUE_IDENTIFIER: ${{ secrets.PLUGIN_UNIQUE_IDENTIFIER }}
+      PLUGIN_SOURCE: ${{ secrets.PLUGIN_SOURCE }}
+      TOOL_CREDENTIAL_KEY: ${{ secrets.TOOL_CREDENTIAL_KEY }}
+      NEW_TOOL_CREDENTIAL_KEY: ${{ secrets.NEW_TOOL_CREDENTIAL_KEY }}
+      GENERAL_MODEL_CREDENTIAL_KEY: ${{ secrets.GENERAL_MODEL_CREDENTIAL_KEY }}
+      CUSTOMER_MODEL_CREDENTIAL_KEY: ${{ secrets.CUSTOMER_MODEL_CREDENTIAL_KEY }}
+      DASHSCOPE_SECRET: ${{ secrets.DASHSCOPE_SECRET }}
+      DEFAULT_TOOL_CREDENTIAL_KEY: ${{ secrets.DEFAULT_TOOL_CREDENTIAL_KEY }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -r requirements.txt
+
+      - name: Install Allure CLI
+        run: |
+          npm install -g allure-commandline --save-dev
+          allure --version
+
+      - name: Create .env.ci
+        shell: bash
+        run: |
+          cat > .env.ci <<EOF
+          BASE_URL=${BASE_URL}
+          CONSOLE_URL=${CONSOLE_URL}
+          ADMIN_API_BASE_URL=${ADMIN_API_BASE_URL}
+          ADMIN_EMAIL=${ADMIN_EMAIL}
+          ADMIN_PASSWORD=${ADMIN_PASSWORD}
+          CONSOLE_EMAIL=${CONSOLE_EMAIL}
+          CONSOLE_PASSWORD=${CONSOLE_PASSWORD}
+          SAML_SSO_EMAIL=${SAML_SSO_EMAIL}
+          PWD_EMAIL=${PWD_EMAIL}
+          PWD_PASSWORD=${PWD_PASSWORD}
+          NEW_PASSWORD_AFTER_POLICY=${NEW_PASSWORD_AFTER_POLICY}
+          PLUGIN_KEYWORD=${PLUGIN_KEYWORD}
+          PLUGIN_ID=${PLUGIN_ID}
+          PLUGIN_UNIQUE_IDENTIFIER=${PLUGIN_UNIQUE_IDENTIFIER}
+          PLUGIN_SOURCE=${PLUGIN_SOURCE}
+          TOOL_CREDENTIAL_KEY=${TOOL_CREDENTIAL_KEY}
+          NEW_TOOL_CREDENTIAL_KEY=${NEW_TOOL_CREDENTIAL_KEY}
+          GENERAL_MODEL_CREDENTIAL_KEY=${GENERAL_MODEL_CREDENTIAL_KEY}
+          CUSTOMER_MODEL_CREDENTIAL_KEY=${CUSTOMER_MODEL_CREDENTIAL_KEY}
+          DASHSCOPE_SECRET=${DASHSCOPE_SECRET}
+          DEFAULT_TOOL_CREDENTIAL_KEY=${DEFAULT_TOOL_CREDENTIAL_KEY}
+          EOF
+
+      - name: Show pytest plan
+        shell: bash
+        run: |
+          TARGET="${{ github.event.inputs.pytest_target || 'testcases' }}"
+          MARKERS="${{ github.event.inputs.pytest_markers }}"
+          WORKERS="${{ github.event.inputs.workers || '1' }}"
+          echo "Target: ${TARGET}"
+          echo "Markers: ${MARKERS}"
+          echo "Workers: ${WORKERS}"
+
+      - name: Run Automation Tests
+        id: run_tests
+        shell: bash
+        run: |
+          set +e
+          TARGET="${{ github.event.inputs.pytest_target || 'testcases' }}"
+          MARKERS="${{ github.event.inputs.pytest_markers }}"
+          WORKERS="${{ github.event.inputs.workers || '1' }}"
+
+          CMD="pytest ${TARGET} --env ci"
+          if [ -n "${MARKERS}" ]; then
+            CMD="${CMD} -m \"${MARKERS}\""
+          fi
+          if [ "${WORKERS}" != "1" ]; then
+            CMD="${CMD} -n ${WORKERS}"
+          fi
+
+          echo "Running: ${CMD}"
+          eval "${CMD}"
+          EXIT_CODE=$?
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Generate Allure Report
+        if: always()
+        shell: bash
+        run: |
+          if [ -d "reports/allure-results" ]; then
+            allure generate reports/allure-results -o reports/allure-report --clean
+          else
+            mkdir -p reports/allure-report
+            echo "No allure-results directory found." > reports/allure-report/README.txt
+          fi
+
+      - name: Upload pytest-html report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-html-report
+          path: reports/report.html
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Allure Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results
+          path: reports/allure-results
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Allure Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: reports/allure-report
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-logs
+          path: |
+            logs
+            reports/screenshots
+            reports/videos
+            reports/traces
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Fail job if tests failed
+        if: always()
+        shell: bash
+        run: |
+          if [ "${{ steps.run_tests.outputs.exit_code }}" != "0" ]; then
+            echo "Pytest failed with exit code ${{ steps.run_tests.outputs.exit_code }}"
+            exit 1
+          fi
