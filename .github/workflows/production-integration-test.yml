@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 90
     environment: UAT ENV
     env:
-      ENV: ci
+      ENV: uat
       PYTHONUNBUFFERED: "1"
       PY_COLORS: "1"
 
