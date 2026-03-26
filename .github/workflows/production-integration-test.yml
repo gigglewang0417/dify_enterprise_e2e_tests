@@ -29,6 +29,7 @@ jobs:
   automation-test:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    environment: UAT ENV
 
     env:
       ENV: UAT ENV
