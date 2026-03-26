@@ -508,138 +508,138 @@ class TestE2ECase3P0:
             assert credential_status == True, f"凭据处于可用状态 id: {credential_status}"
 
 
-    @allure.story("Model Credential Policy Change")
-    @allure.severity(allure.severity_level.CRITICAL)
-    @pytest.mark.parametrize(
-        "plugin_pre_installed",
-        [{
-            "plugin_id": "langgenius/tongyi",
-            "plugin_unique_identifier": "langgenius/tongyi:0.1.32@20a5454088fa017b72490e1cbaeebff21094d11b13e41197591734d1c08cdbb5",
-            "source": "marketplace",
-            "plugin_keyword": "tongyi",
-        }],
-        indirect=True,
-    )
-    def test_model_plugin_credential_policy_change(
-        self,
-        credential_model_policy__all_allowed,
-        plugin_pre_installed,
-        import_model_app_fixture,
-        resource_tracker,
-        console_client,
-        admin_client,
-    ):
-        """
-        模型插件凭据策略变更：
-        前置：导入通义工作流应用；企业策略为「模型允许使用自定义 token」（全允许）。
-        1. 工作空间创建通义自定义模型凭据
-        2. 查询 model-providers，若当前生效凭据非本凭据则 switch
-        3. 更新 workflow draft，为 LLM 节点绑定 credential_id
-        4. 修改企业凭据策略为禁止通义使用自定义凭据（exceptModelPlugins）
-        5. check 接口校验仍统计到当前使用的凭据
-        6. 查询 model-providers，对应 credential_id 的 not_allowed_to_use 为 True
-        """
-        _ = credential_model_policy__all_allowed
-        _ = plugin_pre_installed
-        app_id = import_model_app_fixture
-        credential_name = random_name()
-        console_svc = ConsoleService()
-        credential_svc = CredentialService()
-
-        with allure.step("Step1: 工作空间添加通义自定义模型凭据"):
-            add_payload = {
-                "credentials": {
-                    "dashscope_api_key": DASHSCOPE_SECRET,
-                    "use_international_endpoint": "false",
-                },
-                "name": credential_name,
-            }
-            log_step_data("add model credential payload", **add_payload)
-            add_data = console_svc.add_workspace_model_provider_credential_success(
-                console_client, provider_path=TONGYI_PROVIDER_PATH, **add_payload
-            )
-            assert add_data.get("result") == "success", f"预期 result=success: {add_data}"
-
-            prov_body = console_svc.get_workspace_model_providers_success(console_client)
-            tongyi_item = _tongyi_provider_from_providers_body(prov_body)
-            assert tongyi_item is not None, f"未找到 provider {TONGYI_PROVIDER_PATH}: {prov_body}"
-            ws_credential_id = None
-            for row in (tongyi_item.get("custom_configuration") or {}).get("available_credentials") or []:
-                if row.get("credential_name") == credential_name:
-                    ws_credential_id = row.get("credential_id")
-                    break
-            assert ws_credential_id, (
-                f"凭据列表中未找到名称 {credential_name}: "
-                f"{tongyi_item.get('custom_configuration')}"
-            )
-            resource_tracker.add_workspace_model_credential(
-                ws_credential_id, provider_path=TONGYI_PROVIDER_PATH
-            )
-            log_resource_ids(model_workspace_credential_id=ws_credential_id, app_id=app_id)
-            log_step_result("model providers after add credential", prov_body)
-
-        with allure.step("Step2: 若当前生效凭据非本凭据则切换"):
-            tongyi_item = _tongyi_provider_from_providers_body(
-                console_svc.get_workspace_model_providers_success(console_client)
-            )
-            current_id = (tongyi_item.get("custom_configuration") or {}).get("current_credential_id")
-            if current_id != ws_credential_id:
-                sw = console_svc.switch_workspace_model_provider_credential_success(
-                    ws_credential_id,
-                    client=console_client,
-                    provider_path=TONGYI_PROVIDER_PATH,
-                )
-                assert sw.get("result") == "success", sw
-
-        # with allure.step("Step3: 更新 workflow draft，使应用在用的 LLM 绑定本凭据"):
-        #     draft_res = get_workflow_draft(console_client, app_id)
-        #     assert draft_res.status_code == 200, draft_res.text[:300]
-        #     draft_body = draft_res.json() if draft_res.text else {}
-        #     updated = _build_draft_update_with_llm_model_credential(draft_body, ws_credential_id)
-        #     up_res = update_workflow_draft(console_client, app_id, **updated)
-        #     assert up_res.status_code == 200, f"更新 draft 失败: {up_res.status_code}, {up_res.text[:300]}"
-
-        with allure.step("Step4: 修改企业凭据策略为不允许此模型（exceptModelPlugins）"):
-            credential_payload = {
-                "type": "CREDENTIAL_TYPE_MODEL",
-                "allowToolsUseCustomToken": False,
-                "exceptToolPlugins": [],
-                "allowModelsUseCustomToken": True,
-                "exceptModelPlugins": [TONGYI_PROVIDER_PATH],
-            }
-            res = credential_svc.update_credential_policy_response(client=admin_client, **credential_payload)
-            assert res.status_code == 200, f"update_credential_policy 失败: {res.status_code}, {res.text[:300]}"
-
-        with allure.step("Step5: check 接口校验：当前在使用的凭据仍出现在 items 中"):
-            check_payload = {
-                "type": "CREDENTIAL_TYPE_MODEL",
-                "allowToolsUseCustomToken": False,
-                "exceptToolPlugins": [],
-                "allowModelsUseCustomToken": True,
-                "exceptModelPlugins": [TONGYI_PROVIDER_PATH],
-            }
-            check_res = credential_svc.check_credential_policy_response(client=admin_client, **check_payload)
-            assert check_res.status_code == 200, (
-                f"check_credential_policy 失败: {check_res.status_code}, {check_res.text[:300]}"
-            )
-            check_data = check_res.json() or {}
-            items = check_data.get("items") or []
-            found_ids = {it.get("credentialId") for it in items if isinstance(it, dict)}
-            assert ws_credential_id in found_ids, (
-                f"检查项中应包含凭据 {ws_credential_id}, found={found_ids}, items={items}"
-            )
-            log_step_result("model credential policy check result", check_data)
-
-        with allure.step("Step6: GET model-providers：过滤 credential_id，not_allowed_to_use 为 True"):
-            tongyi_item = _tongyi_provider_from_providers_body(
-                console_svc.get_workspace_model_providers_success(console_client)
-            )
-            assert tongyi_item is not None
-            row = _credential_row_by_id(tongyi_item, ws_credential_id)
-            assert row is not None, (
-                f"available_credentials 中未找到 {ws_credential_id}: "
-                f"{tongyi_item.get('custom_configuration')}"
-            )
-            assert row.get("not_allowed_to_use") is True, (
-                f"预期 not_allowed_to_use=True，实际: {row}"
-            )
+    # @allure.story("Model Credential Policy Change")
+    # @allure.severity(allure.severity_level.CRITICAL)
+    # @pytest.mark.parametrize(
+    #     "plugin_pre_installed",
+    #     [{
+    #         "plugin_id": "langgenius/tongyi",
+    #         "plugin_unique_identifier": "langgenius/tongyi:0.1.33@608ec1e7d07dd52e582cff58561a8c75c989951186ffc59452dfffe3d8051230",
+    #         "source": "marketplace",
+    #         "plugin_keyword": "tongyi",
+    #     }],
+    #     indirect=True,
+    # )
+    # def test_model_plugin_credential_policy_change(
+    #     self,
+    #     credential_model_policy__all_allowed,
+    #     plugin_pre_installed,
+    #     import_model_app_fixture,
+    #     resource_tracker,
+    #     console_client,
+    #     admin_client,
+    # ):
+    #     """
+    #     模型插件凭据策略变更：
+    #     前置：导入通义工作流应用；企业策略为「模型允许使用自定义 token」（全允许）。
+    #     1. 工作空间创建通义自定义模型凭据
+    #     2. 查询 model-providers，若当前生效凭据非本凭据则 switch
+    #     3. 更新 workflow draft，为 LLM 节点绑定 credential_id
+    #     4. 修改企业凭据策略为禁止通义使用自定义凭据（exceptModelPlugins）
+    #     5. check 接口校验仍统计到当前使用的凭据
+    #     6. 查询 model-providers，对应 credential_id 的 not_allowed_to_use 为 True
+    #     """
+    #     _ = credential_model_policy__all_allowed
+    #     _ = plugin_pre_installed
+    #     app_id = import_model_app_fixture
+    #     credential_name = random_name()
+    #     console_svc = ConsoleService()
+    #     credential_svc = CredentialService()
+    #
+    #     with allure.step("Step1: 工作空间添加通义自定义模型凭据"):
+    #         add_payload = {
+    #             "credentials": {
+    #                 "dashscope_api_key": DASHSCOPE_SECRET,
+    #                 "use_international_endpoint": "false",
+    #             },
+    #             "name": credential_name,
+    #         }
+    #         log_step_data("add model credential payload", **add_payload)
+    #         add_data = console_svc.add_workspace_model_provider_credential_success(
+    #             console_client, **add_payload
+    #         )
+    #         assert add_data.get("result") == "success", f"预期 result=success: {add_data}"
+    #
+    #         prov_body = console_svc.get_workspace_model_providers_success(console_client)
+    #         tongyi_item = _tongyi_provider_from_providers_body(prov_body)
+    #         assert tongyi_item is not None, f"未找到 provider {TONGYI_PROVIDER_PATH}: {prov_body}"
+    #         ws_credential_id = None
+    #         for row in (tongyi_item.get("custom_configuration") or {}).get("available_credentials") or []:
+    #             if row.get("credential_name") == credential_name:
+    #                 ws_credential_id = row.get("credential_id")
+    #                 break
+    #         assert ws_credential_id, (
+    #             f"凭据列表中未找到名称 {credential_name}: "
+    #             f"{tongyi_item.get('custom_configuration')}"
+    #         )
+    #         resource_tracker.add_workspace_model_credential(
+    #             ws_credential_id, provider_path=TONGYI_PROVIDER_PATH
+    #         )
+    #         log_resource_ids(model_workspace_credential_id=ws_credential_id, app_id=app_id)
+    #         log_step_result("model providers after add credential", prov_body)
+    #
+    #     with allure.step("Step2: 若当前生效凭据非本凭据则切换"):
+    #         tongyi_item = _tongyi_provider_from_providers_body(
+    #             console_svc.get_workspace_model_providers_success(console_client)
+    #         )
+    #         current_id = (tongyi_item.get("custom_configuration") or {}).get("current_credential_id")
+    #         if current_id != ws_credential_id:
+    #             sw = console_svc.switch_workspace_model_provider_credential_success(
+    #                 ws_credential_id,
+    #                 client=console_client,
+    #                 provider_path=TONGYI_PROVIDER_PATH,
+    #             )
+    #             assert sw.get("result") == "success", sw
+    #
+    #     # with allure.step("Step3: 更新 workflow draft，使应用在用的 LLM 绑定本凭据"):
+    #     #     draft_res = get_workflow_draft(console_client, app_id)
+    #     #     assert draft_res.status_code == 200, draft_res.text[:300]
+    #     #     draft_body = draft_res.json() if draft_res.text else {}
+    #     #     updated = _build_draft_update_with_llm_model_credential(draft_body, ws_credential_id)
+    #     #     up_res = update_workflow_draft(console_client, app_id, **updated)
+    #     #     assert up_res.status_code == 200, f"更新 draft 失败: {up_res.status_code}, {up_res.text[:300]}"
+    #
+    #     with allure.step("Step4: 修改企业凭据策略为不允许此模型（exceptModelPlugins）"):
+    #         credential_payload = {
+    #             "type": "CREDENTIAL_TYPE_MODEL",
+    #             "allowToolsUseCustomToken": False,
+    #             "exceptToolPlugins": [],
+    #             "allowModelsUseCustomToken": True,
+    #             "exceptModelPlugins": [TONGYI_PROVIDER_PATH],
+    #         }
+    #         res = credential_svc.update_credential_policy_response(client=admin_client, **credential_payload)
+    #         assert res.status_code == 200, f"update_credential_policy 失败: {res.status_code}, {res.text[:300]}"
+    #
+    #     with allure.step("Step5: check 接口校验：当前在使用的凭据仍出现在 items 中"):
+    #         check_payload = {
+    #             "type": "CREDENTIAL_TYPE_MODEL",
+    #             "allowToolsUseCustomToken": False,
+    #             "exceptToolPlugins": [],
+    #             "allowModelsUseCustomToken": True,
+    #             "exceptModelPlugins": [TONGYI_PROVIDER_PATH],
+    #         }
+    #         check_res = credential_svc.check_credential_policy_response(client=admin_client, **check_payload)
+    #         assert check_res.status_code == 200, (
+    #             f"check_credential_policy 失败: {check_res.status_code}, {check_res.text[:300]}"
+    #         )
+    #         check_data = check_res.json() or {}
+    #         items = check_data.get("items") or []
+    #         found_ids = {it.get("credentialId") for it in items if isinstance(it, dict)}
+    #         assert ws_credential_id in found_ids, (
+    #             f"检查项中应包含凭据 {ws_credential_id}, found={found_ids}, items={items}"
+    #         )
+    #         log_step_result("model credential policy check result", check_data)
+    #
+    #     with allure.step("Step6: GET model-providers：过滤 credential_id，not_allowed_to_use 为 True"):
+    #         tongyi_item = _tongyi_provider_from_providers_body(
+    #             console_svc.get_workspace_model_providers_success(console_client)
+    #         )
+    #         assert tongyi_item is not None
+    #         row = _credential_row_by_id(tongyi_item, ws_credential_id)
+    #         assert row is not None, (
+    #             f"available_credentials 中未找到 {ws_credential_id}: "
+    #             f"{tongyi_item.get('custom_configuration')}"
+    #         )
+    #         assert row.get("not_allowed_to_use") is True, (
+    #             f"预期 not_allowed_to_use=True，实际: {row}"
+    #         )

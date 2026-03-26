@@ -24,7 +24,7 @@ DEFAULT_CREATE_CREDENTIAL_PAYLOAD = {
     "pluginVersion": "0.3.2",
     "displayName": "giggle_1",
     "pluginArgs": {
-        "access_tokens": os.getenv("DEFAULT_TOOL_CREDENTIAL_KEY", "test-github-token")
+        "access_tokens": os.getenv("TOOL_CREDENTIAL_KEY", "test-github-token")
     },
     "type": "CREDENTIAL_TYPE_PLUGIN",
 }

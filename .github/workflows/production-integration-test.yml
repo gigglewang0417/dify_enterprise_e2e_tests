@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 90
 
     env:
-      ENV: ci
+      ENV: UAT ENV
       PYTHONUNBUFFERED: "1"
       PY_COLORS: "1"
 
@@ -62,8 +62,6 @@ jobs:
       GENERAL_MODEL_CREDENTIAL_KEY: ${{ secrets.GENERAL_MODEL_CREDENTIAL_KEY }}
       CUSTOMER_MODEL_CREDENTIAL_KEY: ${{ secrets.CUSTOMER_MODEL_CREDENTIAL_KEY }}
       DASHSCOPE_SECRET: ${{ secrets.DASHSCOPE_SECRET }}
-      DEFAULT_TOOL_CREDENTIAL_KEY: ${{ secrets.DEFAULT_TOOL_CREDENTIAL_KEY }}
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -97,10 +95,10 @@ jobs:
           npm install -g allure-commandline --save-dev
           allure --version
 
-      - name: Create .env.ci
+      - name: Create .env.uat
         shell: bash
         run: |
-          cat > .env.ci <<EOF
+          cat > .env.uat <<EOF
           BASE_URL=${BASE_URL}
           CONSOLE_URL=${CONSOLE_URL}
           ADMIN_API_BASE_URL=${ADMIN_API_BASE_URL}
@@ -121,7 +119,6 @@ jobs:
           GENERAL_MODEL_CREDENTIAL_KEY=${GENERAL_MODEL_CREDENTIAL_KEY}
           CUSTOMER_MODEL_CREDENTIAL_KEY=${CUSTOMER_MODEL_CREDENTIAL_KEY}
           DASHSCOPE_SECRET=${DASHSCOPE_SECRET}
-          DEFAULT_TOOL_CREDENTIAL_KEY=${DEFAULT_TOOL_CREDENTIAL_KEY}
           EOF
 
       - name: Show pytest plan
@@ -143,7 +140,8 @@ jobs:
           MARKERS="${{ github.event.inputs.pytest_markers }}"
           WORKERS="${{ github.event.inputs.workers || '1' }}"
 
-          CMD="pytest ${TARGET} --env ci"
+          # 显式关闭 fail-fast，确保单个/多个失败用例不会中断整个 pytest 运行。
+          CMD="pytest ${TARGET} --env uat --maxfail=0"
           if [ -n "${MARKERS}" ]; then
             CMD="${CMD} -m \"${MARKERS}\""
           fi
