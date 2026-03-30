@@ -21,4 +21,4 @@ class TestMembersTestCase:
     def test_delete_member_success(self, admin_client):
         member_svc = MemberService()
         log_step_data("delete member payload", member_id="388be05c-dc73-4358-8016-7ca669d77f52")
-        member_svc.delete_member_success(member_id="46b08ef0-e023-4e07-92ed-0d8bab8cbbc3")
+        member_svc.delete_member_success(member_id="ea1e9d92-2b10-494c-aeab-76ddab187ad4")

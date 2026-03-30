@@ -158,6 +158,27 @@ class ResourceTracker:
                     pass
 
 
+@pytest.fixture(scope="class")
+def admin_api_p0_secret_key(request, admin_client):
+    """
+    Admin API E2E（如 TestE2ECase5P0）：企业后台创建 secret key，yield secret_key_id；
+    该类下用例全部结束后删除该密钥。
+    用例内通过 self.admin_api_secret_key 获取 Bearer 的 secretKey 字符串。
+    """
+    secret_svc = SecretKeyService()
+    body = secret_svc.create_secret_key_success(client=admin_client)
+    secret_key = body.get("secretKey")
+    secret_key_id = body.get("id")
+    assert secret_key, f"创建 secret key 响应中未返回 secretKey: {body}"
+    assert secret_key_id, f"创建 secret key 响应中未返回 id: {body}"
+    request.cls.admin_api_secret_key = secret_key
+    yield secret_key_id
+    try:
+        secret_svc.delete_secret_key_success(secret_key_id, admin_client)
+    except Exception:
+        pass
+
+
 @pytest.fixture(scope="session")
 def resource_tracker(admin_client, console_client):
     tracker = ResourceTracker()
