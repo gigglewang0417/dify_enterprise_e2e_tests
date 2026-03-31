@@ -1,4 +1,4 @@
-name: Production Integration Test
+name: Production Integration Test v2
 
 on:
   schedule:
