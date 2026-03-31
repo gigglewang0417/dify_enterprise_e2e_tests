@@ -172,40 +172,40 @@ jobs:
           mkdir -p reports/summary
           if [ -f "reports/allure-report/widgets/summary.json" ]; then
             python3 - <<'PY'
-import json
-from pathlib import Path
+            import json
+            from pathlib import Path
 
-summary_file = Path("reports/allure-report/widgets/summary.json")
-summary = json.loads(summary_file.read_text(encoding="utf-8"))
-stat = summary.get("statistic", {})
+            summary_file = Path("reports/allure-report/widgets/summary.json")
+            summary = json.loads(summary_file.read_text(encoding="utf-8"))
+            stat = summary.get("statistic", {})
 
-total = int(stat.get("total", 0) or 0)
-passed = int(stat.get("passed", 0) or 0)
-failed = int(stat.get("failed", 0) or 0)
-broken = int(stat.get("broken", 0) or 0)
-skipped = int(stat.get("skipped", 0) or 0)
-unknown = int(stat.get("unknown", 0) or 0)
+            total = int(stat.get("total", 0) or 0)
+            passed = int(stat.get("passed", 0) or 0)
+            failed = int(stat.get("failed", 0) or 0)
+            broken = int(stat.get("broken", 0) or 0)
+            skipped = int(stat.get("skipped", 0) or 0)
+            unknown = int(stat.get("unknown", 0) or 0)
 
-pass_rate = 0.0 if total == 0 else passed / total * 100
+            pass_rate = 0.0 if total == 0 else passed / total * 100
 
-lines = [
-    "# Test Pass Rate Summary",
-    "",
-    f"- Total: {total}",
-    f"- Passed: {passed}",
-    f"- Failed: {failed}",
-    f"- Broken: {broken}",
-    f"- Skipped: {skipped}",
-    f"- Unknown: {unknown}",
-    f"- Pass Rate: {pass_rate:.2f}%",
-]
+            lines = [
+                "# Test Pass Rate Summary",
+                "",
+                f"- Total: {total}",
+                f"- Passed: {passed}",
+                f"- Failed: {failed}",
+                f"- Broken: {broken}",
+                f"- Skipped: {skipped}",
+                f"- Unknown: {unknown}",
+                f"- Pass Rate: {pass_rate:.2f}%",
+            ]
 
-Path("reports/summary/test-pass-rate.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-Path("reports/summary/test-pass-rate.txt").write_text(
-    f"total={total}\npassed={passed}\nfailed={failed}\nbroken={broken}\nskipped={skipped}\nunknown={unknown}\npass_rate={pass_rate:.2f}%\n",
-    encoding="utf-8",
-)
-PY
+            Path("reports/summary/test-pass-rate.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+            Path("reports/summary/test-pass-rate.txt").write_text(
+                f"total={total}\npassed={passed}\nfailed={failed}\nbroken={broken}\nskipped={skipped}\nunknown={unknown}\npass_rate={pass_rate:.2f}%\n",
+                encoding="utf-8",
+            )
+            PY
             cat reports/summary/test-pass-rate.md >> "$GITHUB_STEP_SUMMARY"
           else
             echo "# Test Pass Rate Summary" > reports/summary/test-pass-rate.md
