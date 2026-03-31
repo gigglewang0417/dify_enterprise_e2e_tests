@@ -38,7 +38,7 @@ class ConsoleService(BaseService):
     def add_workspace_model_provider_credential_success(
         self,
         client=None,
-        provider_path="langgenius/tongyi/tongyi",
+        provider_path="langgenius/tongyi",
         expected_status=201,
         **payload,
     ):

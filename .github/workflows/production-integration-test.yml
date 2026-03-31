@@ -1,8 +1,6 @@
 name: Production Integration Test
 
 on:
-  schedule:
-    - cron: "0 1 * * *" # 每天 UTC 01:00，即北京时间 09:00
   workflow_dispatch:
     inputs:
       pytest_target:
