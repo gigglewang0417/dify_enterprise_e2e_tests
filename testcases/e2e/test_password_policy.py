@@ -105,7 +105,11 @@ class TestE2ECase7P0:
 
     @allure.story("Password Policy Change And Re-login")
     @allure.severity(allure.severity_level.BLOCKER)
-    def test_update_password_policy_and_login(self, admin_client, resource_tracker):
+    def test_update_password_policy_and_login(
+        self,
+        admin_client,
+        restore_password_policy_after_policy_test,
+    ):
         """
         1. 修改密码策略为大写+小写+数字（PasswordService.update_password_policy_success）
         2. 使用 ADMIN_EMAIL/ADMIN_PASSWORD 登录，调用 check_password_status，断言 requirePasswordChange 为 True
@@ -155,4 +159,3 @@ class TestE2ECase7P0:
             assert final_login_res.status_code == 200, (
                 f"使用新密码重新登录失败: {final_login_res.status_code}, {final_login_res.text[:300]}"
             )
-            resource_tracker.reset_password()

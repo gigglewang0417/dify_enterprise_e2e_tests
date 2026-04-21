@@ -15,6 +15,26 @@ _WORKSPACE_TOOL_PROVIDER_BUILTIN_BASE = (
 # DELETE {base}/{provider_path}/credentials — 删除凭据（body: credential_id）
 _WORKSPACE_MODEL_PROVIDERS_BASE = f"{_CONSOLE_API_BASE}/workspaces/current/model-providers"
 
+# 当前工作空间成员：邮箱邀请
+_WORKSPACE_MEMBERS_INVITE_EMAIL_PATH = (
+    f"{_CONSOLE_API_BASE}/workspaces/current/members/invite-email"
+)
+
+# 当前工作空间：从应用市场安装插件
+_WORKSPACE_PLUGIN_INSTALL_MARKETPLACE_PATH = (
+    f"{_CONSOLE_API_BASE}/workspaces/current/plugin/install/marketplace"
+)
+
+# 当前工作空间：批量查询插件最新版本
+_WORKSPACE_PLUGIN_LIST_LATEST_VERSIONS_PATH = (
+    f"{_CONSOLE_API_BASE}/workspaces/current/plugin/list/latest-versions"
+)
+
+# 当前工作空间：按插件 ID 批量查询已安装实例（installations）
+_WORKSPACE_PLUGIN_LIST_INSTALLATIONS_IDS_PATH = (
+    f"{_CONSOLE_API_BASE}/workspaces/current/plugin/list/installations/ids"
+)
+
 
 def _workspace_tool_provider_builtin_add_path(provider_path):
     """provider_path 例如 langgenius/github/github（不含首尾斜杠）。"""
@@ -89,7 +109,7 @@ def _model_provider_credentials_switch_path(provider_path):
     return f"{_model_provider_credentials_path(provider_path)}/switch"
 
 
-def add_workspace_model_provider_credential(client, provider_path="langgenius/tongyi/tongyi", **payload):
+def add_workspace_model_provider_credential(client, provider_path="langgenius/tongyi", **payload):
     """
     POST /console/api/workspaces/current/model-providers/{provider_path}/credentials
     创建当前工作空间内模型提供商的自定义凭据。
@@ -151,3 +171,57 @@ def get_workspace_model_providers(client):
     response 示例: {"data": [{"tenant_id": "...", "provider": "langgenius/tongyi/tongyi", ...}, ...]}
     """
     return client.get(_WORKSPACE_MODEL_PROVIDERS_BASE)
+
+
+def invite_workspace_members_by_email(
+    client,
+    emails,
+    role="normal",
+    language="zh-Hans",
+    **payload,
+):
+    if payload:
+        body = payload
+    else:
+        email_list = emails if isinstance(emails, list) else [emails]
+        body = {"emails": email_list, "role": role, "language": language}
+    return client.post(_WORKSPACE_MEMBERS_INVITE_EMAIL_PATH, json=body)
+
+
+def install_workspace_plugins_from_marketplace(client, **payload):
+    """
+    POST /console/api/workspaces/current/plugin/install/marketplace
+    从应用市场按插件唯一标识安装到当前工作空间。
+
+    requestBody 示例::
+        {"plugin_unique_identifiers": ["jayfish0/agentql:1.0.0@03d116b2eb1d..."]}
+
+    response 示例::
+        {"all_installed": true, "task_id": ""}
+    """
+    return client.post(_WORKSPACE_PLUGIN_INSTALL_MARKETPLACE_PATH, json=payload)
+
+
+def list_workspace_plugin_latest_versions(client, **payload):
+    """
+    POST /console/api/workspaces/current/plugin/list/latest-versions
+    批量查询指定插件 ID 在当前工作空间下的最新版本信息。
+    """
+    return client.post(_WORKSPACE_PLUGIN_LIST_LATEST_VERSIONS_PATH, json=payload)
+
+
+def list_workspace_plugin_installations_ids(client, **payload):
+    """
+    POST /console/api/workspaces/current/plugin/list/installations/ids
+    按 plugin_ids 批量查询当前工作空间内已安装的插件实例列表。
+
+    requestBody 示例::
+        {"plugin_ids": ["langgenius/tongyi", "langgenius/gemini"]}
+
+    response 示例::
+        {"plugins": [{"id": "...", "tenant_id": "...", "plugin_id": "langgenius/tongyi",
+          "plugin_unique_identifier": "langgenius/tongyi:0.1.34@...", "version": "0.1.34",
+          "declaration": {...}, ...}, ...]}
+    """
+    return client.post(_WORKSPACE_PLUGIN_LIST_INSTALLATIONS_IDS_PATH, json=payload)
+

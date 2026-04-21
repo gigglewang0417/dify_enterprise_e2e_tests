@@ -1,7 +1,9 @@
 from api.workspace_api import (
     create_workspace,
     update_workspace,
+    delete_default_workspace,
     delete_workspace,
+    get_default_workspace,
     get_workspace,
     get_workspace_permission,
     join_workspace,
@@ -81,9 +83,53 @@ class WorkspaceService(BaseService):
         assert not body or body in ("{}", "null"), f"删除成功时响应体应为空，实际: {res.text[:200]}"
 
     def set_default_workspace_success(self, workspace_id, client=None, **payload):
+        """
+        PUT /v1/dashboard/api/workspaces/{id}/default，body 默认 ``{"id": workspace_id}``。
+        成功响应含 ``workspaceId``，与请求的 workspace 一致。
+        """
         client = self.get_admin_client(client)
         res = set_default_workspace(client, workspace_id, **payload)
-        return self.assert_and_parse(res, message="设置默认 workspace 失败")
+        data = self.assert_and_parse(res, message="设置默认 workspace 失败")
+        assert isinstance(data, dict), f"设置默认 workspace 响应格式异常: {data}"
+        wid = data.get("workspaceId")
+        assert wid == workspace_id or str(wid) == str(workspace_id), (
+            f"响应 workspaceId 应与请求一致: 期望 {workspace_id}, 实际 {wid}, body: {data}"
+        )
+        return data
+
+    def get_default_workspace_success(self, client=None):
+        """
+        GET /v1/dashboard/api/default-workspace。
+        断言返回 ``workspaceId`` 与 ``workspace.id`` 一致。
+        """
+        client = self.get_admin_client(client)
+        res = get_default_workspace(client)
+        data = self.assert_and_parse(res, message="查询默认 workspace 失败")
+        assert isinstance(data, dict), f"默认 workspace 响应格式异常: {data}"
+        wid = data.get("workspaceId")
+        assert wid, f"响应中缺少 workspaceId: {data}"
+        ws = data.get("workspace")
+        assert isinstance(ws, dict), f"响应中 workspace 应为对象: {data}"
+        assert ws.get("id") == wid or str(ws.get("id")) == str(wid), (
+            f"workspace.id 应与 workspaceId 一致: {data}"
+        )
+        return data
+
+    def delete_default_workspace_success(self, client=None):
+        """
+        DELETE /v1/dashboard/api/default-workspace。
+        成功时 HTTP 200，响应体为空或 ``{}``。
+        """
+        client = self.get_admin_client(client)
+        res = delete_default_workspace(client)
+        assert res.status_code == 200, (
+            f"取消默认 workspace 失败: {res.status_code}, {res.text[:300]}"
+        )
+        body = res.text.strip()
+        assert not body or body in ("{}", "null"), (
+            f"取消默认 workspace 成功时响应体应为空或 {{}}，实际: {res.text[:200]}"
+        )
+        return self.parse_json(res)
 
     def join_workspace_success(self, workspace_id, client=None, **payload):
         client = self.get_admin_client(client)
@@ -99,9 +145,53 @@ class WorkspaceService(BaseService):
         res = get_workspace_permission(client, workspace_id)
         data = self.assert_and_parse(res, message="查询 workspace 权限失败")
         assert isinstance(data, dict), f"workspace 权限响应格式异常: {data}"
+        assert "permission" in data, f"响应中缺少 permission: {data}"
+        perm = data.get("permission")
+        assert isinstance(perm, dict), f"permission 应为对象: {data}"
+        wid = perm.get("workspaceId")
+        assert wid == workspace_id or str(wid) == str(workspace_id), (
+            f"permission.workspaceId 应与请求 workspace 一致: 期望 {workspace_id}, 实际 {wid}"
+        )
+        for key in ("allowMemberInvite", "allowOwnerTransfer"):
+            if key in perm:
+                assert isinstance(perm[key], bool), (
+                    f"{key} 应为布尔值: {perm}"
+                )
         return data
 
-    def update_workspace_permission_success(self, workspace_id, client=None, **payload):
+    def update_workspace_permission_success(
+        self,
+        workspace_id,
+        client=None,
+        *,
+        permission_body=None,
+        **payload,
+    ):
         client = self.get_admin_client(client)
-        res = update_workspace_permission(client, workspace_id, **payload)
-        return self.assert_and_parse(res, message="更新 workspace 权限失败")
+        if permission_body is not None:
+            if payload:
+                raise ValueError(
+                    "请只使用其一：permission_body（自动组 body）或 **payload（完整 body），不要同时传入"
+                )
+            body = {
+                "id": workspace_id,
+                "permission": {
+                    "workspaceId": workspace_id,
+                    **permission_body,
+                },
+            }
+        else:
+            body = payload
+        res = update_workspace_permission(client, workspace_id, **body)
+        data = self.assert_and_parse(res, message="更新 workspace 权限失败")
+        assert isinstance(data, dict), f"workspace 权限更新响应格式异常: {data}"
+        if data.get("message") is not None:
+            assert data.get("message") == "success", (
+                f"更新权限应返回 message=success: {data}"
+            )
+        assert "permission" in data, f"响应中缺少 permission: {data}"
+        perm = data.get("permission") or {}
+        assert perm.get("workspaceId") == workspace_id or str(perm.get("workspaceId")) == str(
+            workspace_id
+        ), f"permission.workspaceId 应与 workspace 一致: {data}"
+        return data

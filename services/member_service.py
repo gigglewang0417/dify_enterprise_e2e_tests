@@ -9,6 +9,30 @@ from api.member_api import (
 from services.base_service import BaseService
 
 
+def _extract_member_id_from_detail(data):
+    """
+    从成员详情/创建响应中解析成员 id，兼容多种结构：
+    - 顶层 ``id``、``member.id``
+    - ``account.id``
+    - ``account.account.id``（嵌套 account，如 GetMember 返回）
+    """
+    if not isinstance(data, dict):
+        return None
+    top = data.get("id")
+    if top:
+        return top
+    member = data.get("member") or {}
+    if member.get("id"):
+        return member.get("id")
+    account = data.get("account") or {}
+    if account.get("id"):
+        return account.get("id")
+    inner = account.get("account") or {}
+    if isinstance(inner, dict) and inner.get("id"):
+        return inner.get("id")
+    return None
+
+
 class MemberService(BaseService):
 
     def create_member_response(self, email, name, status="active", client=None):
@@ -24,8 +48,8 @@ class MemberService(BaseService):
         payload = {"email": email, "name": name, "status": status}
         res = create_member(client, **payload)
         data = self.assert_and_parse(res, message="创建成员失败")
-        # 支持顶层 id/password 或 data.member
-        member_id = data.get("id") or (data.get("member") or {}).get("id")
+        # 支持顶层 id、member.id、account.account.id 等
+        member_id = _extract_member_id_from_detail(data)
         assert member_id, f"响应中缺少 id: {data}"
         return data
 
@@ -66,7 +90,7 @@ class MemberService(BaseService):
         client = self.get_admin_client(client)
         res = get_member(client, member_id)
         data = self.assert_and_parse(res, message="查询成员详情失败")
-        returned_id = data.get("id") or (data.get("member") or {}).get("id")
+        returned_id = _extract_member_id_from_detail(data)
         assert returned_id == member_id, f"成员详情返回的 id 与请求不一致: {data}"
         return data
 
@@ -74,7 +98,7 @@ class MemberService(BaseService):
         client = self.get_admin_client(client)
         res = update_member(client, member_id, **payload)
         data = self.assert_and_parse(res, message="更新成员失败")
-        returned_id = data.get("id") or (data.get("member") or {}).get("id") or member_id
+        returned_id = _extract_member_id_from_detail(data) or member_id
         assert returned_id == member_id, f"更新成员返回的 id 与请求不一致: {data}"
         return data
 

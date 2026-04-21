@@ -4,10 +4,13 @@ from api.plugin_api import (
     delete_install_task,
     find_install_task_status_by_id,
     get_plugin_install_task_logs,
+    get_plugin_settings,
+    get_plugin_types,
     install_plugin,
     list_plugin_ids,
     list_plugin_install_tasks,
     list_plugins,
+    put_plugin_settings,
     uninstall_plugin,
 )
 from services.base_service import BaseService
@@ -24,6 +27,16 @@ DEFAULT_PLUGIN_PAYLOAD = {
 DEFAULT_UNINSTALL_PLUGIN_PAYLOAD = {
     "pluginUniqueIdentifier": "langgenius/github:0.3.1@d11d1199e99933a27fc210a3cb5579addb51a97e80b9f26dfb165eac6a6eadf5",
 }
+
+# 插件安装范围（Dashboard PUT /plugin/settings 示例）
+PLUGIN_INSTALLATION_SCOPE_OFFICIAL_ONLY = "PLUGIN_INSTALLATION_SCOPE_OFFICIAL_ONLY"
+DEFAULT_PLUGIN_SETTINGS_PAYLOAD = {
+    "pluginInstallationScope": PLUGIN_INSTALLATION_SCOPE_OFFICIAL_ONLY,
+    "restrictToMarketplaceOnly": False,
+}
+
+# GET /plugin-manager/plugins/types/{plugin_id} 默认查询的插件 ID
+DEFAULT_PLUGIN_TYPE_PLUGIN_ID = "langgenius/tongyi"
 
 
 class PluginService(BaseService):
@@ -157,3 +170,45 @@ class PluginService(BaseService):
         client = self.get_admin_client(client)
         res = apply_plugin(client, **payload)
         return self.assert_and_parse(res, message="分配插件失败")
+
+    def get_plugin_types_success(self, client=None, plugin_id=None):
+        """
+        GET /v1/plugin-manager/plugins/types/{plugin_id}，断言 200。
+        未传 ``plugin_id`` 时使用 ``DEFAULT_PLUGIN_TYPE_PLUGIN_ID``（默认 ``langgenius/tongyi``）。
+        校验响应含 ``pluginId``、``plugins`` 列表。
+        """
+        client = self.get_admin_client(client)
+        pid = plugin_id if plugin_id is not None else DEFAULT_PLUGIN_TYPE_PLUGIN_ID
+        res = get_plugin_types(client, pid)
+        data = self.assert_and_parse(res, message="查询插件类型版本失败")
+        assert isinstance(data, dict), f"插件类型响应格式异常: {data}"
+        assert data.get("pluginId") == pid, (
+            f"响应 pluginId 应与请求一致: 期望 {pid!r}, 实际 {data.get('pluginId')!r}"
+        )
+        assert isinstance(data.get("plugins") or [], list), (
+            f"响应 plugins 应为列表: {data}"
+        )
+        return data
+
+    def get_plugin_settings_success(self, client=None):
+        """
+        GET /v1/dashboard/api/plugin/settings，断言 200，返回设置体
+        （含 ``pluginInstallationScope``、``restrictToMarketplaceOnly``）。
+        """
+        client = self.get_admin_client(client)
+        res = get_plugin_settings(client)
+        data = self.assert_and_parse(res, message="查询插件设置失败")
+        assert isinstance(data, dict), f"插件设置响应格式异常: {data}"
+        return data
+
+    def put_plugin_settings_success(self, client=None, **payload):
+        """
+        PUT /v1/dashboard/api/plugin/settings，断言 200，返回更新后的设置体。
+        未传字段时默认使用 ``DEFAULT_PLUGIN_SETTINGS_PAYLOAD``。
+        """
+        client = self.get_admin_client(client)
+        body = {**DEFAULT_PLUGIN_SETTINGS_PAYLOAD, **payload}
+        res = put_plugin_settings(client, **body)
+        data = self.assert_and_parse(res, message="更新插件设置失败")
+        assert isinstance(data, dict), f"插件设置响应格式异常: {data}"
+        return data

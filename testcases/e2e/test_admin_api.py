@@ -578,7 +578,7 @@ class TestE2ECase5P0:
             dsl_file=dsl_file,
         )
 
-        with allure.step("Step1: Import App DSL POST /workspaces/{workspace_id}/dsl/import"):
+        with allure.step("Step1: Import App DSL "):
             log_step_data(
                 "admin api import workspace dsl",
                 base_url=ADMIN_API_BASE_URL,
@@ -603,7 +603,7 @@ class TestE2ECase5P0:
             assert app_id, f"导入 DSL 响应中未解析到 app_id: {import_body}"
             log_resource_ids(app_id=app_id)
 
-        with allure.step("Step2: Export App DSL GET /apps/{app_id}/dsl?include_secret=false"):
+        with allure.step("Step2: Export App DSL"):
             log_step_data(
                 "admin api export app dsl",
                 base_url=ADMIN_API_BASE_URL,

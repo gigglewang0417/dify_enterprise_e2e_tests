@@ -1,8 +1,10 @@
 from common.config import config
 
 # 路径常量（与 OpenAPI EnterpriseWorkspace 一致）
-WORKSPACE_BASE_PATH = f"{config.base_url}/dashboard/api/workspaces"
+_DASHBOARD_API_BASE = f"{config.base_url}/dashboard/api"
+WORKSPACE_BASE_PATH = f"{_DASHBOARD_API_BASE}/workspaces"
 WORKSPACE_CREATE_PATH = WORKSPACE_BASE_PATH
+DEFAULT_WORKSPACE_PATH = f"{_DASHBOARD_API_BASE}/default-workspace"
 
 
 def _workspace_by_id_path(workspace_id):
@@ -64,10 +66,30 @@ def set_default_workspace(client, workspace_id, **payload):
     """
     PUT /v1/dashboard/api/workspaces/{id}/default
     EnterpriseWorkspace_SetDefaultWorkspace
-    requestBody: SetDefaultWorkspaceReq (required)
+    requestBody 示例: {"id": "<workspace_id>"}
+    response 示例: {"workspaceId": "<workspace_id>"}
     """
     path = f"{_workspace_by_id_path(workspace_id)}/default"
-    return client.put(path, json=payload if payload else {})
+    body = payload if payload else {"id": workspace_id}
+    return client.put(path, json=body)
+
+
+def get_default_workspace(client):
+    """
+    GET /v1/dashboard/api/default-workspace
+    查询当前用户的默认工作空间。
+    response 示例: {"workspaceId": "...", "workspace": {"id", "name", "status", "owner", ...}}
+    """
+    return client.get(DEFAULT_WORKSPACE_PATH)
+
+
+def delete_default_workspace(client):
+    """
+    DELETE /v1/dashboard/api/default-workspace
+    取消当前用户的默认工作空间设置。
+    response 示例: {}（空 JSON）
+    """
+    return client.delete(DEFAULT_WORKSPACE_PATH)
 
 
 def join_workspace(client, workspace_id, **payload):
